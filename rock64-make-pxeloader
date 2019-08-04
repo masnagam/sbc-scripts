@@ -1,0 +1,185 @@
+#!/bin/sh
+
+set -eu
+
+PROGNAME=$(basename $0)
+BASEDIR=$(cd $(dirname $0); pwd)
+
+AYUFAN_ROCK64_GITHUB_URL=https://github.com/ayufan-rock64/linux-u-boot/archive
+DOCKER_IMAGE=ayufan/rock64-dockerfiles:x86_64
+
+CLEAN=no
+AYUFAN_RELEASE=
+OUTPUT=$BASEDIR
+IPADDR=
+SERVERIP=
+GATEWAYIP=
+NETMASK=
+
+if [ "$(uname)" != Linux ] || id -nG | grep -q docker; then
+    DOCKER='docker'
+else
+    DOCKER='sudo docker'
+fi
+
+help() {
+    cat <<EOF >&2
+Usage: $PROGNAME [options]
+
+Help Options:
+  -h, --help
+
+Options:
+  -c, --clean
+    Remove $DOCKER_IMAGE before exiting
+
+  -r, --release <AYUFAN-RELEASE>
+    Release name of ayufan's U-Boot src to be built.
+
+  -o, --output <OUTPUT> (Default: $OUTPUT)
+    Output folder name which contains the build results.
+
+U-Boot Configuration Options:
+  -i, --ipaddr <IPADDR>
+    Define CONFIG_IPADDR with <IPADDR>.
+
+  -s, --serverip <SERVERIP>
+    Define CONFIG_SERVERIP with <SERVERIP>.
+
+  -g, --gateway <GATEWAYIP>
+    Define CONFIG_GATEWAYIP with <GATEWAYIP>.
+
+  -n, --netmask <NETMASK>
+    Define CONFIG_NETMASK with <NETMASK>.
+
+Description:
+  This script builds images from ayufan-rock64/linux-u-boot for PXE boot.
+
+  This script modifies //include/configs/rock64_rk3328.h so that \`pxe get\`
+  after \`dhcp\` can works even when DHCP server doesn't provides the next
+  server (TFTP server) IP address.
+
+  I've confirmed that this script works fine only with IPv4 addresses.  This
+  script might work with IPv6 addresses, but I've never tried at the moment...
+
+Examples:
+  \$ $PROGNAME -r 2017.09-rockchip-ayufan-1045-g9922d32c04 -s 10.1.2.3
+EOF
+    exit 0
+}
+
+error() {
+    echo "$1" >&2
+    exit 1
+}
+
+clean() {
+    if [ -n "$BUILD_SH" ]; then
+        rm -f $BUILD_SH
+    fi
+
+    if [ "$CLEAN" = yes ]; then
+        docker rmi $DOCKER_IMAGE
+    fi
+}
+
+for OPT in "$@"
+do
+    case $OPT in
+        '-h' | '--help')
+            help
+            ;;
+        '-r' | '--release')
+            AYUFAN_RELEASE="$2"
+            shift 2
+            ;;
+        '-i' | '--ipaddr')
+            HOSTIP="$2"
+            shift 2
+            ;;
+        '-s' | '--serverip')
+            SERVERIP="$2"
+            shift 2
+            ;;
+        '-o' | '--output')
+            OUTPUT=$(cd "$2"; pwd)
+            shift 2
+            ;;
+        '-c' | '--clean')
+            CLEAN=yes
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$AYUFAN_RELEASE" ]; then
+    error "-r is required"
+fi
+
+if [ -z "$SERVERIP" ]; then
+    error "-s is required"
+fi
+
+if [ ! -d "$OUTPUT" ]; then
+    error "No output folder"
+fi
+
+cat <<EOF
+CLEAN          : $CLEAN
+AYUFAN_RELEASE : $AYUFAN_RELEASE
+OUTPUT         : $OUTPUT
+IPADDR         : $IPADDR
+SERVERIP       : $SERVERIP
+GATEWAYIP      : $GATEWAYIP
+NETMASK        : $NETMASK
+EOF
+
+CONFIGS=
+if [ -n "$IPADDR" ]; then
+    CONFIG="#define CONFIG_IPADDR $IPADDR\n"
+fi
+if [ -n "$SERVERIP" ]; then
+    CONFIG="#define CONFIG_IPADDR \"$IPADDR\"\n"
+fi
+
+BUILD_SH=$(mktemp $BASEDIR/build.XXXXXX.sh)
+trap "clean" EXIT
+
+cat <<EOF
+
+build.sh generated:
+---
+EOF
+
+cat <<EOF | tee $BUILD_SH
+set -eu
+
+mkdir -p /src
+cd /src
+
+curl -sSL $AYUFAN_ROCK64_GITHUB_URL/$AYUFAN_RELEASE.tar.gz | \\
+  tar -zx --strip-components=1
+
+cat <<EOF_ >>include/configs/rock64_rk3328.h
+#ifndef __EVB_RK3328_H_FOR_PXE_BOOT
+#define __EVB_RK3328_H_FOR_PXE_BOOT
+#define CONFIG_SERVERIP $SERVERIP
+#endif
+EOF_
+
+./dev-make BOARD_TARGET=rock64 -j \$(nproc)
+
+cp u-boot-erase-spi-rock64.img.xz /mnt/
+cp u-boot-flash-spi-rock64.img.xz /mnt/
+cp u-boot-rockchip-rock64-*.deb /mnt/
+cp tmp/u-boot-rock64/rksd_loader.img /mnt/
+EOF
+
+cat <<EOF
+---
+
+EOF
+
+echo "Building images on Docker container created from $DOCKER_IMAGE..."
+$DOCKER run --rm -v $BUILD_SH:/tmp/build.sh -v "$OUTPUT:/mnt" \
+  $DOCKER_IMAGE sh /tmp/build.sh

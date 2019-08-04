@@ -1,0 +1,91 @@
+#!/bin/sh
+
+set -eu
+
+PROGNAME=$(basename $0)
+BASEDIR=$(cd $(dirname $0); pwd)
+
+BRANCH=
+INSTALL_DIR=/usr/local/bin
+CLEAN=no
+
+if [ "$(uname)" != Linux ] || id -nG | grep -q docker; then
+    DOCKER='docker'
+else
+    DOCKER='sudo docker'
+fi
+
+help() {
+    cat <<EOF >&2
+Usage: $PROGNAME [options]
+
+Help Options:
+  -h, --help
+
+Options:
+  -b, --branch <BRANCH> (Required)
+    Branch to be cloned.
+
+  -c, --clean
+    Remove Docker images used for building docker-compose.
+
+  -i, --install-dir <DIR> (Default: $INSTALL_DIR)
+    Path to directory where docker-compose is copied.
+
+Description:
+  There is no official binary for ARM architecture family.  This script builds
+  docker-compose command for it.
+
+  This script can build docker-compose whose version is less than 1.25.
+EOF
+    exit 0
+}
+
+error() {
+    echo "$1" >&2
+    exit 1
+}
+
+clean() {
+    if [ "$CLEAN" = yes ]; then
+        $DOCKER rmi docker-compose
+        cat /tmp/compose/Dockerfile | grep -e '^FROM' | cut -d ' ' -f2 | xargs $DOCKER rmi
+    fi
+
+    rm -rf /tmp/compose
+}
+
+for OPT in "$@"
+do
+    case $OPT in
+        '-h' | '--help')
+            help
+            ;;
+        '-b' | '--branch')
+            BRANCH="$2"
+            shift 2
+            ;;
+        '-c' | '--clean')
+            CLEAN=yes
+            shift
+            ;;
+        '-i' | '--install-dir')
+            INSTALL_DIR=$(cd "$2"; pwd)
+            shift 2
+            ;;
+    esac
+done
+
+if [ -z "$BRANCH" ]; then
+    error "--branch is required"
+fi
+
+trap "clean" EXIT
+
+git clone --depth=1 -b $BRANCH https://github.com/docker/compose.git /tmp/compose
+
+(cd /tmp/compose \
+ && $DOCKER build -t docker-compose . \
+ && $DOCKER run --rm --entrypoint=script/build/linux-entrypoint \
+      -v $(pwd)/dist:/code/dist -v $(pwd)/.git:/code/.git docker-compose \
+ && sudo cp dist/docker-compose-Linux-$(arch) "$INSTALL_DIR/docker-compose")

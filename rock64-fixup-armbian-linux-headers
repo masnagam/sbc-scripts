@@ -1,0 +1,35 @@
+#!/bin/sh
+
+set -eu
+
+# Reboot before running this script if you have just upgraded kernel.
+KREL=$(uname -r)
+
+PATTERN='subdir-\$(CONFIG_SECURITY_SELINUX) += selinux'
+
+cat <<EOF
+----
+Armbian linux-headers-rockchip64 for 4.4.xxx has been broken.
+Several files required for building drivers are missing.
+
+* https://forum.armbian.com/topic/9540-linux-headers-rk3399-is-broken-for-building-out-of-tree-modules-with-fix/
+* https://forum.armbian.com/topic/9602-linux-headers-41920-cubox-make-scripts-fails/
+* https://forum.armbian.com/topic/873-solved-compiling-drivers-error-no-header-files-found/
+* https://forum.armbian.com/topic/6789-build-zfs-on-rk3328/
+* https://qiita.com/__laygan/items/08ef1a9fedf9992e18bf (Japanese)
+
+This script modifies /usr/src/linux-headers-$KREL/scripts/Makefile like below:
+
+  -subdir-\$(CONFIG_SECURITY_SELINUX) += selinux
+  +#subdir-\$(CONFIG_SECURITY_SELINUX) += selinux
+
+and performs \`make scripts\` in order to generate missing files.
+----
+EOF
+
+# Assumed that linux-headers-rockchip64 has already been installed.
+
+sudo sed -i -e "s/^$PATTERN\$/#$PATTERN/" \
+  /usr/src/linux-headers-$KREL/scripts/Makefile
+
+(cd /usr/src/linux-headers-$KREL; sudo make scripts)

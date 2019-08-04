@@ -1,0 +1,207 @@
+#!/bin/sh
+
+set -eu
+
+PROGNAME=$(basename $0)
+BASEDIR=$(cd $(dirname $0); pwd)
+
+COPY_BOOT=n
+ISCSI_PORTAL=
+ISCSI_TARGET=
+ISCSI_INITIATOR=
+
+help() {
+    cat <<EOF >&2
+Usage: $PROGNAME [options]
+
+Help Options:
+  -h, --help
+
+Required Options:
+  -b, --boot
+    Copy /boot into iSCSI storage
+
+  -p, --portal <PORTAL-IPADDR>
+    Target IP address
+
+  -t, --target <TARGET-IQN>
+    Target IQN
+
+  -i, --initiator <INITIATOR-IQN>
+    Initiator IQN
+
+Description:
+  $PROGNAME creates rootfs in a specified iSCSI storage in accordance with steps
+  described in the following page:
+
+    Net boot (PXE + iSCSI) with a RaspberryPi 3 - darknao's stuff
+      https://stuff.drkn.ninja/post/2016/11/08/Net-boot-(PXE-iSCSI)-with-a-RaspberryPi-3
+
+  The open-iscsi package will be installed onto the local machine and the
+  open-iscsi systemd service is started and enabled.  Before starting the
+  service, The value of InitiatorName in /etc/iscsi/initiatorname.iscsi is
+  replaced with the value of the --initiator option.
+
+  initrd.img-\$(uname -r) containing open-iscsi modules is created in /boot
+  in the local filesystem.  It's necessary to mount the iSCSI storage in boot.
+
+  The iSCSI storage is formatted with \`mkfs.ext4 -F\`.  And then files in the
+  local filesystem are copied into it.
+
+Examples:
+  For MMC boot:
+
+    \$ $PROGNAME -p 10.1.2.3 -t iqn.2019-03.example.nas:iscsi:target \\
+        -i iqn.2019-03.example.rpi:iscsi:initiator
+
+  For PXE boot:
+
+    \$ $PROGNAME -b -p 10.1.2.3 -t iqn.2019-03.example.nas:iscsi:target \\
+        -i iqn.2019-03.example.rpi:iscsi:initiator
+
+Bugs:
+  open-iscsi in Raspbian/Stretch has a bug at 2019-03-17, and it has not
+  fixed, yet:
+
+    https://bugs.launchpad.net/ubuntu/+source/open-iscsi/+bug/1566468/
+
+  Workaround:
+
+    \$ cat /lib/modules-load.d/open-iscsi.conf | sed s/^ib_iser/#ib_iser/ \\
+        | sudo tee /lib/modules-load.d/open-iscsi.conf
+EOF
+    exit 0
+}
+
+confirm() {
+    read -p "$1" ANSWER
+    if [ "$ANSWER" != y ]; then
+        exit 0
+    fi
+}
+
+error() {
+    echo "$1" >&2
+    exit 1
+}
+
+for OPT in "$@"
+do
+    case $OPT in
+        '-h' | '--help')
+            help
+            ;;
+        '-b' | '--boot')
+            COPY_BOOT=y
+            shift
+            ;;
+        '-p' | '--portal')
+            ISCSI_PORTAL=$2
+            shift 2
+            ;;
+        '-t' | '--target')
+            ISCSI_TARGET=$2
+            shift 2
+            ;;
+        '-i' | '--initiator')
+            ISCSI_INITIATOR=$2
+            shift 2
+            ;;
+    esac
+done
+
+if [ -z "$ISCSI_PORTAL" ]; then
+    error "--portal is required"
+fi
+
+if [ -z "$ISCSI_TARGET" ]; then
+    error "--target is required"
+fi
+
+if [ -z "$ISCSI_INITIATOR" ]; then
+    error "--initiator is required"
+fi
+
+HOSTNAME=$(hostname)
+KERNEL_VERION=$(uname -r)
+
+cat <<EOF
+HOSTNAME       : $HOSTNAME
+KERNEL_VERSION : $KERNEL_VERION
+ISCSI_PORTAL   : $ISCSI_PORTAL
+ISCSI_TARGET   : $ISCSI_TARGET
+ISCSI_INITIATOR: $ISCSI_INITIATOR
+
+EOF
+
+echo "Installing open-iscsi..."
+sudo mkdir -p /etc/iscsi
+echo "InitiatorName=$ISCSI_INITIATOR" | sudo tee /etc/iscsi/initiatorname.iscsi
+sudo apt-get update -qq
+sudo apt-get install -y -qq --no-install-recommends open-iscsi initramfs-tools
+# Disable to load ib_iser.
+# https://bugs.launchpad.net/ubuntu/+source/open-iscsi/+bug/1566468/comments/14
+cat /lib/modules-load.d/open-iscsi.conf | sed s/^ib_iser/#ib_iser/ | \
+    sudo tee /lib/modules-load.d/open-iscsi.conf >/dev/null
+sudo systemctl restart open-iscsi || error "Failed to start open-iscsi service"
+
+sleep 1
+echo "Conneting to $ISCSI_TARGET..."
+sudo iscsiadm -m discovery -p $ISCSI_PORTAL -t sendtargets
+sudo iscsiadm -m node -p $ISCSI_PORTAL -T $ISCSI_TARGET -l || \
+    error "Failed to connect to $ISCSI_TARGET"
+
+sleep 1
+DEV=$(ls -1 /dev/disk/by-path/* 2>/dev/null | grep "ip-$ISCSI_PORTAL" | xargs readlink -f)
+test -n "$DEV" || error "Failed to attach iSCSI storage"
+
+echo "Updating initramfs..."
+sudo touch /etc/iscsi/iscsi.initramfs
+sudo rm -f /boot/initrd.img-*
+sudo update-initramfs -v -k $KERNEL_VERION -c
+
+echo "Formatting $DEV to ext4..."
+sudo mkfs.ext4 -F $DEV
+UUID=$(sudo blkid $DEV | cut -d ' ' -f2)
+
+echo "Copying files..."
+sudo mount $DEV /mnt
+sudo cp -afv /bin /etc /home /lib /opt /root /sbin /srv /usr /var /mnt/
+sudo mkdir -p /mnt/dev /mnt/media /mnt/mnt /mnt/proc /mnt/run /mnt/sys /mnt/tmp
+if [ "$COPY_BOOT" = y ]; then
+    sudo cp -afv /boot /mnt/
+else
+    sudo mkdir -p /mnt/boot
+fi
+sudo umount $DEV
+
+sudo iscsiadm -m node -u
+
+if which raspi-config >/dev/null; then
+    PXEBOOT_SHARED_FOLDER=$(cat /proc/cpuinfo | grep Serial | rev | cut -c 1-8 | rev)
+else
+    PXEBOOT_SHARED_FOLDER="path/to/boot"
+fi
+
+cat <<EOF
+Done.
+
+Update /etc/fstab in the iSCSI LUN by hand:
+
+  sudo iscsiadm -m node -p $ISCSI_PORTAL -T $ISCSI_TARGET -l
+  sudo mount \$(ls -1 /dev/disk/by-path/* 2>/dev/null | grep "ip-$ISCSI_PORTAL" | xargs readlink -f) /mnt
+
+  # Update the device field for the root partition with
+  # $UUID
+  sudo nano /mnt/etc/fstab
+
+  sudo umount /mnt
+  sudo iscsiadm -m node -u
+
+Copy files in /boot for PXE boot:
+
+  sudo mount.cifs //nas/pxeboot/$PXEBOOT_SHARED_FOLDER /mnt
+  sudo cp -afv /boot/* /mnt/
+  sudo umount /mnt
+
+EOF

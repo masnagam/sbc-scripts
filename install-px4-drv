@@ -1,0 +1,127 @@
+#!/bin/sh
+
+set -eu
+
+PROGNAME=$(basename $0)
+BASEDIR=$(cd $(dirname $0); pwd)
+
+DKMS=no
+LINUX_HEADERS=
+ACTION=
+DEPS="gcc make unzip"
+
+help() {
+    cat <<EOF >&2
+Usage:
+  $PROGNAME [--dkms] install
+  $PROGNAME [--dkms] uninstall
+  $PROGNAME -h | --help
+EOF
+    exit 0
+}
+
+error() {
+    echo "$1" >&2
+    exit 1
+}
+
+install_firmware() {
+    echo "Installing firmware..."
+    (cd /tmp/px4_drv/fwtool \
+     && make -j $(nproc) \
+     && wget http://plex-net.co.jp/plex/pxw3u4/pxw3u4_BDA_ver1x64.zip -O pxw3u4_BDA_ver1x64.zip \
+     && unzip -oj pxw3u4_BDA_ver1x64.zip pxw3u4_BDA_ver1x64/PXW3U4.sys \
+     && ./fwtool PXW3U4.sys it930x-firmware.bin \
+     && sudo mkdir -p /lib/firmware \
+     && sudo cp it930x-firmware.bin /lib/firmware/)
+}
+
+uninstall_firmware() {
+    echo "Uninstalling firmware..."
+    sudo rm /lib/firmware/it930x-firmware.bin
+}
+
+install_dkms_driver() {
+    echo "Installing driver with dkms..."
+    (cd /tmp/px4_drv \
+     && sudo cp -a ./ /usr/src/px4_drv-0.2.1 \
+     && sudo dkms add px4_drv/0.2.1 \
+     && sudo dkms install px4_drv/0.2.1)
+}
+
+uninstall_dkms_driver() {
+    echo "Uninstalling driver with dkms..."
+    sudo dkms remove px4_drv/0.2.1 --all
+    sudo rm -rf /usr/src/px4_drv-0.2.1
+}
+
+install_driver() {
+    echo "Installing driver..."
+    (cd /tmp/px4_drv/driver && make && sudo make install)
+}
+
+uninstall_driver() {
+    echo "Uninstalling driver..."
+    (cd /tmp/px4_drv/driver && sudo make uninstall)
+}
+
+for OPT in "$@"
+do
+    case $OPT in
+        '-h' | '--help')
+            help
+            ;;
+        '--dkms')
+            DKMS=yes
+            shift
+            ;;
+        'install')
+            ACTION=install
+            break
+            ;;
+        'uninstall')
+            ACTION=uninstall
+            break
+            ;;
+    esac
+done
+
+if [ -z "$ACTION" ]; then
+    error "Specify action (install|uninstall)"
+fi
+
+if [ "$DKMS" = yes ]; then
+    DEPS="$DEPS dkms"
+fi
+
+echo "Installing deps..."
+sudo apt-get update -qq
+sudo apt-get install -y -qq --no-install-recommends $DEPS
+
+mkdir /tmp/px4_drv
+trap "rm -rf /tmp/px4_drv" EXIT
+
+echo "Downloading src..."
+wget https://github.com/nns779/px4_drv/tarball/master -O - | \
+    tar -zx -C /tmp/px4_drv --strip-components=1
+
+case "$ACTION" in
+    'install')
+        install_firmware
+        if [ "$DKMS" = yes ]; then
+            install_dkms_driver
+        else
+            install_driver
+        fi
+        ;;
+    'uninstall')
+        if [ "$DKMS" = yes ]; then
+            uninstall_dkms_driver
+        else
+            uninstall_driver
+        fi
+        uninstall_firmware
+        ;;
+esac
+
+echo "Done"
