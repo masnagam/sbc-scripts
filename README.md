@@ -6,7 +6,7 @@ board computers like Raspberry Pi.
 Each script can be run with `curl` and `sh` like below:
 
 ```console
-curl -fsSL https://raw.githubusercontent.com/masnagam/sbc-scripts/install-px4-drv \
+curl -fsSL https://raw.githubusercontent.com/masnagam/sbc-scripts/master/install-px4-drv \
   sh -s -- --dkms install
 ```
 
