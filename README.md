@@ -5,9 +5,9 @@ board computers like Raspberry Pi.
 
 Each script can be run with `curl` and `sh` like below:
 
-```console
+```sh
 curl -fsSL https://raw.githubusercontent.com/masnagam/sbc-scripts/master/install-px4-drv \
-  sh -s -- --dkms install
+  | sh -s -- --dkms install
 ```
 
 The filename of a script for a specific SBC starts with a label listed below:
@@ -16,4 +16,9 @@ The filename of a script for a specific SBC starts with a label listed below:
 * `rock64`: Armbian/ROCK64
 
 For details, see comments in each script or help which is shown by running with
-the `-h` or `--help` option.
+the `-h` or `--help` option like below:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/masnagam/sbc-scripts/master/install-docker-compose \
+  | sh -s -- -h
+```
