@@ -6,8 +6,9 @@ PROGNAME=$(basename $0)
 BASEDIR=$(cd $(dirname $0); pwd)
 
 BRANCH=
-INSTALL_DIR=/usr/local/bin
 CLEAN=no
+PLATFORM=
+INSTALL_DIR=$(pwd)
 
 if [ "$(uname)" != Linux ] || id -nG | grep -q docker; then
     DOCKER='docker'
@@ -29,14 +30,24 @@ Options:
   -c, --clean
     Remove Docker images used for building docker-compose.
 
-  -i, --install-dir <DIR> (Default: $INSTALL_DIR)
-    Path to directory where docker-compose is copied.
+  -p, --platform <PLATFORM>
+    Cross-build for PLATFORM.
+
+    This option might improve the build time if you have a super fast PC.
+
+    I tried this option on a MBP with Core i5 2.3 GHz and it took several hours
+    for the cross-build...  So, I DO NOT recommend you to use this option.
 
 Description:
   There is no official binary for ARM architecture family.  This script builds
   docker-compose command for it.
 
   This script can build docker-compose whose version is less than 1.25.
+
+Example
+  Build 1.24.1 for linux/arm/v7 and copy it into the current directory:
+
+    \$ $PROGNAME -b 1.24.1 -c -p linux/arm/v7
 EOF
     exit 0
 }
@@ -47,12 +58,14 @@ error() {
 }
 
 clean() {
+    sleep 1
     if [ "$CLEAN" = yes ]; then
-        $DOCKER rmi docker-compose
-        cat /tmp/compose/Dockerfile | grep -e '^FROM' | cut -d ' ' -f2 | xargs $DOCKER rmi
+        $DOCKER rmi docker-compose-build-tmp || true
+        cat $BUILD_DIR/Dockerfile | grep -e '^FROM' | cut -d ' ' -f2 \
+            | xargs $DOCKER rmi || true
     fi
 
-    rm -rf /tmp/compose
+    /bin/rm -rf $BUILD_DIR
 }
 
 for OPT in "$@"
@@ -69,8 +82,8 @@ do
             CLEAN=yes
             shift
             ;;
-        '-i' | '--install-dir')
-            INSTALL_DIR=$(cd "$2"; pwd)
+        '-p' | '--platform')
+            PLATFORM="$2"
             shift 2
             ;;
     esac
@@ -82,10 +95,42 @@ fi
 
 trap "clean" EXIT
 
-git clone --depth=1 -b $BRANCH https://github.com/docker/compose.git /tmp/compose
+BUILD_DIR=$(mktemp -d $(pwd)/docker-compose.XXXXXX)
 
-(cd /tmp/compose \
- && $DOCKER build -t docker-compose . \
+git clone -b $BRANCH --single-branch --depth=1 \
+    https://github.com/docker/compose.git $BUILD_DIR
+
+# Enabling BuildKit improves the build time, but causes the following errors:
+#
+#  failed to solve with frontend dockerfile.v0: ...
+#
+#export DOCKER_BUILDKIT=1
+
+sed -i -e 's/^envlist.*/envlist = py36/' $BUILD_DIR/tox.ini
+
+if [ -n "$PLATFORM" ]; then
+    case $PLATFORM in
+        'linux/amd64')
+            ARCH=amd64
+            ;;
+        'linux/arm64')
+            ARCH=arm64v8
+            ;;
+        'linux/arm/v7')
+            ARCH=arm32v7
+            ;;
+        *)
+            error "Unsupported platform: $PLATFORM"
+            ;;
+    esac
+    sed -i -e "s|FROM |FROM $ARCH/|g" $BUILD_DIR/Dockerfile
+    # A workaround for https://github.com/docker-library/python/issues/431
+    sed -i -e "s|python:3.6|python:3.6-buster|g" $BUILD_DIR/Dockerfile
+fi
+
+(cd $BUILD_DIR \
+ && $DOCKER build -t docker-compose-build-tmp . \
  && $DOCKER run --rm --entrypoint=script/build/linux-entrypoint \
-      -v $(pwd)/dist:/code/dist -v $(pwd)/.git:/code/.git docker-compose \
- && sudo cp dist/docker-compose-Linux-$(arch) "$INSTALL_DIR/docker-compose")
+      -v $BUILD_DIR/dist:/code/dist -v $BUILD_DIR/.git:/code/.git \
+      docker-compose-build-tmp \
+ && cp dist/docker-compose-Linux-* "$INSTALL_DIR/docker-compose")
