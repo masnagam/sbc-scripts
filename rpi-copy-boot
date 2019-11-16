@@ -1,0 +1,91 @@
+#!/bin/sh
+
+set -eu
+
+PROGNAME=$(basename $0)
+BASEDIR=$(cd $(dirname $0); pwd)
+
+error() {
+    echo "$1" >&2
+    exit 1
+}
+
+help() {
+    cat <<EOF >&2
+Usage: $PROGNAME [options] <RPI> <KVER> <TFTPROOT>
+
+Help Options:
+  -h, --help
+
+Arguments:
+  <RPI>
+    Hostname of the target Raspberry Pi which can be accessed using SSH
+
+  <KVER>
+    Kernel version like 4.19.58-v7+
+
+  <TFTPROOT>
+    TFTP root folder containing boot files
+
+Descripion:
+  This script performs:
+
+    1. Updating initrd.img
+    2. Reading the serial number from /proc/cpuinfo
+    3. Renaming the old boot folder to SERNO.backup.\$(date +%Y%m%d%H%M%S)
+    4. Creating a new boot folder named as the last 8 octet characters in the
+       serial number
+    5. Recursively copying files in /boot on the target Raspberry Pi into the
+       new boot folder
+
+  After that, it may be necessary to update the following files by hand:
+
+    * cmdline.txt
+    * config.txt
+
+Examples:
+  \$ $PROGNAME rpi 4.19.58-v7+ /Volumes/pxeboot/tftproot
+EOF
+    exit 0
+}
+
+while [ $# -gt 0 ]
+do
+    case "$1" in
+        '-h' | '--help')
+            help
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+RPI="$1"
+KVER="$2"
+TFTPROOT="$3"
+
+if [ -z "$RPI" ]; then
+    error "RPI is required"
+fi
+
+if [ -z "$KVER" ]; then
+    error "KVER is required"
+fi
+
+if [ -z "$TFTPROOT" ]; then
+    error "TFTPROOT is required"
+fi
+
+ssh $RPI sudo rm /boot/initrd.img-*
+ssh $RPI sudo update-initramfs -v -k $KVER -c
+
+SERNO=$(ssh $RPI cat /proc/cpuinfo | grep Serial | cut -d ':' -f2 | \
+        rev | cut -c 1-8 | rev)
+
+if [ -e "$TFTPROOT/$SERNO" ]; then
+    mv "$TFTPROOT/$SERNO" "$TFTPROOT/$SERNO.backup.$(date +%Y%m%d%H%M%S)"
+fi
+mkdir -p $TFTPROOT/$SERNO
+
+scp -r $RPI:/boot/* $TFTPROOT/$SERNO/
