@@ -65,9 +65,9 @@ uninstall_driver() {
     (cd /tmp/px4_drv/driver && sudo make uninstall)
 }
 
-for OPT in "$@"
+while [ $# -gt 0 ]
 do
-    case $OPT in
+    case "$1" in
         '-h' | '--help')
             help
             ;;

@@ -68,9 +68,9 @@ clean() {
     /bin/rm -rf $BUILD_DIR
 }
 
-for OPT in "$@"
+while [ $# -gt 0 ]
 do
-    case $OPT in
+    case "$1" in
         '-h' | '--help')
             help
             ;;

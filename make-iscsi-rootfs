@@ -85,9 +85,9 @@ error() {
     exit 1
 }
 
-for OPT in "$@"
+while [ $# -gt 0 ]
 do
-    case $OPT in
+    case "$1" in
         '-h' | '--help')
             help
             ;;
@@ -96,15 +96,15 @@ do
             shift
             ;;
         '-p' | '--portal')
-            ISCSI_PORTAL=$2
+            ISCSI_PORTAL="$2"
             shift 2
             ;;
         '-t' | '--target')
-            ISCSI_TARGET=$2
+            ISCSI_TARGET="$2"
             shift 2
             ;;
         '-i' | '--initiator')
-            ISCSI_INITIATOR=$2
+            ISCSI_INITIATOR="$2"
             shift 2
             ;;
     esac
