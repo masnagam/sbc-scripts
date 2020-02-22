@@ -5,10 +5,7 @@ set -eu
 PROGNAME=$(basename $0)
 BASEDIR=$(cd $(dirname $0); pwd)
 
-BRANCH=
-CLEAN=no
-PLATFORM=
-INSTALL_DIR=$(pwd)
+TAG=
 
 if [ "$(uname)" != Linux ] || id -nG | grep -q docker; then
     DOCKER='docker'
@@ -18,36 +15,34 @@ fi
 
 help() {
     cat <<EOF >&2
-Usage: $PROGNAME [options]
+Install docker-compose
 
-Help Options:
+USAGE:
+  install-docker-compose -h | --help
+  install-docker-compose <tag>
+
+OPTIONS:
   -h, --help
+    Show help
 
-Options:
-  -b, --branch <BRANCH> (Required)
-    Branch to be cloned.
+ARGUMENTS:
+  <tag>
+    One of tags listed in https://hub.docker.com/r/masnagam/docker-compose/tags.
 
-  -c, --clean
-    Remove Docker images used for building docker-compose.
+DESCRIPTION:
+  This script installs docker-compose which is expected from a Docker image
+  downloaded from masnagam/docker-compose:\$tag.
 
-  -p, --platform <PLATFORM>
-    Cross-build for PLATFORM.
-
-    This option might improve the build time if you have a super fast PC.
-
-    I tried this option on a MBP with Core i5 2.3 GHz and it took several hours
-    for the cross-build...  So, I DO NOT recommend you to use this option.
-
-Description:
-  There is no official binary for ARM architecture family.  This script builds
-  docker-compose command for it.
-
-  This script can build docker-compose whose version is less than 1.25.
+  Downloaded image will be removed automatically.
 
 Example
-  Build 1.24.1 for linux/arm/v7 and copy it into the current directory:
+  Install 1.25.4 into /usr/local/bin:
 
-    \$ $PROGNAME -b 1.24.1 -c -p linux/arm/v7
+    install-docker-compose 1.25.4 | sudo tar -x -C /usr/local/bin
+
+  Extract platform-specific docker-compose, and copy it via SSH
+
+    install-docker-compose master-debian-arm64v8 | ssh tar -x
 EOF
     exit 0
 }
@@ -59,13 +54,10 @@ error() {
 
 clean() {
     sleep 1
-    if [ "$CLEAN" = yes ]; then
-        $DOCKER rmi docker-compose-build-tmp || true
-        cat $BUILD_DIR/Dockerfile | grep -e '^FROM' | cut -d ' ' -f2 \
-            | xargs $DOCKER rmi || true
+    if [ -n "$CONTAINER" ]; then
+        $DOCKER container rm -f "$CONTAINER"
     fi
-
-    /bin/rm -rf $BUILD_DIR
+    $DOCKER image rm -f $IMAGE
 }
 
 while [ $# -gt 0 ]
@@ -74,63 +66,21 @@ do
         '-h' | '--help')
             help
             ;;
-        '-b' | '--branch')
-            BRANCH="$2"
-            shift 2
-            ;;
-        '-c' | '--clean')
-            CLEAN=yes
-            shift
-            ;;
-        '-p' | '--platform')
-            PLATFORM="$2"
-            shift 2
+        *)
+            break
             ;;
     esac
 done
 
-if [ -z "$BRANCH" ]; then
-    error "--branch is required"
+TAG="$1"
+if [ -z "$TAG" ]; then
+    error "tag is required"
 fi
+
+IMAGE=masnagam/docker-compose:$TAG
+CONTAINER=
 
 trap "clean" EXIT
 
-BUILD_DIR=$(mktemp -d $(pwd)/docker-compose.XXXXXX)
-
-git clone -b $BRANCH --single-branch --depth=1 \
-    https://github.com/docker/compose.git $BUILD_DIR
-
-# Enabling BuildKit improves the build time, but causes the following errors:
-#
-#  failed to solve with frontend dockerfile.v0: ...
-#
-#export DOCKER_BUILDKIT=1
-
-sed -i -e 's/^envlist.*/envlist = py36/' $BUILD_DIR/tox.ini
-
-if [ -n "$PLATFORM" ]; then
-    case $PLATFORM in
-        'linux/amd64')
-            ARCH=amd64
-            ;;
-        'linux/arm64')
-            ARCH=arm64v8
-            ;;
-        'linux/arm/v7')
-            ARCH=arm32v7
-            ;;
-        *)
-            error "Unsupported platform: $PLATFORM"
-            ;;
-    esac
-    sed -i -e "s|FROM |FROM $ARCH/|g" $BUILD_DIR/Dockerfile
-    # A workaround for https://github.com/docker-library/python/issues/431
-    sed -i -e "s|python:3.6|python:3.6-buster|g" $BUILD_DIR/Dockerfile
-fi
-
-(cd $BUILD_DIR \
- && $DOCKER build -t docker-compose-build-tmp . \
- && $DOCKER run --rm --entrypoint=script/build/linux-entrypoint \
-      -v $BUILD_DIR/dist:/code/dist -v $BUILD_DIR/.git:/code/.git \
-      docker-compose-build-tmp \
- && cp dist/docker-compose-Linux-* "$INSTALL_DIR/docker-compose")
+CONTAINER=$($DOCKER create $IMAGE)
+$DOCKER cp $CONTAINER:/usr/local/bin/docker-compose -
