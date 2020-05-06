@@ -19,6 +19,6 @@ For details, see comments in each script or help which is shown by running with
 the `-h` or `--help` option like below:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/masnagam/sbc-scripts/master/install-docker-compose \
+curl -fsSL https://raw.githubusercontent.com/masnagam/sbc-scripts/master/get-docker-compose \
   | sh -s -- -h
 ```
