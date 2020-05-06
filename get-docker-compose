@@ -45,7 +45,7 @@ Example
 
   Extract docker-compose for a remote machine, and copy it via SSH
 
-    $PROGNAME 1.25.4-debian-arm64v8 | ssh $REMOTE tar -x
+    $PROGNAME 1.25.4-debian-arm64v8 | ssh \$REMOTE tar -x
 EOF
     exit 0
 }
