@@ -1,0 +1,118 @@
+name: Build docker-compose
+
+on:
+  repository_dispatch:
+    types:
+      - build-docker-compose
+
+env:
+  DOCKERHUB_USER: masnagam
+  IMAGE: masnagam/docker-compose
+  MAIN_PLATFORM: debian
+  DOCKER_BUILDKIT: 1
+  DOCKER_CLI_EXPERIMENTAL: enabled
+
+jobs:
+  build-images:
+    strategy:
+      matrix:
+        platform:
+          - alpine
+          - debian
+        arch:
+          - amd64
+          - arm32v7
+          - arm64v8
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: docker/compose
+          ref: refs/tags/${{ github.event.client_payload.version }}
+      - name: Set VERSION
+        run: |-
+          echo ::set-env name=VERSION::${{ github.event.client_payload.version }}
+          echo "VERSION=${{ github.event.client_payload.version }}"
+      - name: Set GIT_COMMIT
+        run: |-
+          echo ::set-env name=GIT_COMMIT::$(git rev-parse --short HEAD)
+          echo "GIT_COMMIT=$(git rev-parse --short HEAD)"
+      - name: Setup QEMU user-mode emulation
+        run: |-
+          sudo apt-get update
+          sudo apt-get install -y qemu qemu-user-static
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+      - name: Rewrite Dockerfile in order to build image for a specific arch
+        run: |-
+          sed -i -e 's|FROM docker|FROM ${{ matrix.arch }}/docker|' Dockerfile
+          sed -i -e 's|FROM python|FROM ${{ matrix.arch }}/python|' Dockerfile
+          sed -i -e 's|FROM alpine|FROM ${{ matrix.arch }}/alpine|' Dockerfile
+          sed -i -e 's|FROM debian|FROM ${{ matrix.arch }}/debian|' Dockerfile
+          cat Dockerfile
+      - name: Build image
+        run: |-
+          docker build -t $IMAGE:${VERSION}-${{ matrix.platform }}-${{ matrix.arch }} --no-cache --build-arg BUILD_PLATFORM=${{ matrix.platform }} --build-arg GIT_COMMIT=$GIT_COMMIT .
+      - name: Login to DockerHub
+        run: |-
+          docker login -u $DOCKERHUB_USER -p ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Push image
+        run: |-
+          docker push $IMAGE:${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}
+      - name: Update latest tags for each platform
+        run: |-
+          docker tag $IMAGE:${VERSION}-${{ matrix.platform }}-${{ matrix.arch }} $IMAGE:${{ matrix.platform }}-${{ matrix.arch }}
+          docker push $IMAGE:${{ matrix.platform }}-${{ matrix.arch }}
+        if: github.event.client_payload.latest
+      - name: Update the main platform tags
+        run: |-
+          docker tag $IMAGE:${VERSION}-${{ matrix.platform }}-${{ matrix.arch }} $IMAGE:${VERSION}-${{ matrix.arch }}
+          docker push $IMAGE:${VERSION}-${{ matrix.arch }}
+        if: matrix.platform == env.MAIN_PLATFORM
+      - name: Update latest tags for the main platform
+        run: |-
+          docker tag $IMAGE:${{ matrix.platform }}-${{ matrix.arch }} $IMAGE:${{ matrix.arch }}
+          docker push $IMAGE:${{ matrix.arch }}
+        if: github.event.client_payload.latest && matrix.platform == env.MAIN_PLATFORM
+  build-multiarch-image:
+    strategy:
+      matrix:
+        platform:
+          - alpine
+          - debian
+    runs-on: ubuntu-latest
+    needs: build-images
+    steps:
+      - name: Set VERSION
+        run: |-
+          echo ::set-env name=VERSION::${{ github.event.client_payload.version }}
+          echo "VERSION=${{ github.event.client_payload.version }}"
+      - name: Login to DockerHub
+        run: |-
+          docker login -u $DOCKERHUB_USER -p ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Create and push the manifest for each platform
+        run: |-
+          docker manifest create $IMAGE:${VERSION}-${{ matrix.platform }} $IMAGE:${VERSION}-${{ matrix.platform }}-amd64 $IMAGE:${VERSION}-${{ matrix.platform }}-arm32v7 $IMAGE:${VERSION}-${{ matrix.platform }}-arm64v8
+          docker manifest annotate $IMAGE:${VERSION}-${{ matrix.platform }} $IMAGE:${VERSION}-${{ matrix.platform }}-arm32v7 --os linux --arch arm --variant v7
+          docker manifest annotate $IMAGE:${VERSION}-${{ matrix.platform }} $IMAGE:${VERSION}-${{ matrix.platform }}-arm64v8 --os linux --arch arm64 --variant v8
+          docker manifest push $IMAGE:${VERSION}-${{ matrix.platform }}
+      - name: Update latest tag for each platform
+        run: |-
+          docker manifest create $IMAGE:${{ matrix.platform }} $IMAGE:${{ matrix.platform }}-amd64 $IMAGE:${{ matrix.platform }}-arm32v7 $IMAGE:${{ matrix.platform }}-arm64v8
+          docker manifest annotate $IMAGE:${{ matrix.platform }} $IMAGE:${{ matrix.platform }}-arm32v7 --os linux --arch arm --variant v7
+          docker manifest annotate $IMAGE:${{ matrix.platform }} $IMAGE:${{ matrix.platform }}-arm64v8 --os linux --arch arm64 --variant v8
+          docker manifest push $IMAGE:${{ matrix.platform }}
+        if: github.event.client_payload.latest
+      - name: Update the version tag for the main platform
+        run: |-
+          docker manifest create $IMAGE:$VERSION $IMAGE:${VERSION}-amd64 $IMAGE:${VERSION}-arm32v7 $IMAGE:${VERSION}-arm64v8
+          docker manifest annotate $IMAGE:$VERSION $IMAGE:${VERSION}-arm32v7 --os linux --arch arm --variant v7
+          docker manifest annotate $IMAGE:$VERSION $IMAGE:${VERSION}-arm64v8 --os linux --arch arm64 --variant v8
+          docker manifest push $IMAGE:$VERSION
+        if: matrix.platform == env.MAIN_PLATFORM
+      - name: Update the latest tag for the main platform
+        run: |-
+          docker manifest create $IMAGE $IMAGE:amd64 $IMAGE:arm32v7 $IMAGE:arm64v8
+          docker manifest annotate $IMAGE $IMAGE:arm32v7 --os linux --arch arm --variant v7
+          docker manifest annotate $IMAGE $IMAGE:arm64v8 --os linux --arch arm64 --variant v8
+          docker manifest push $IMAGE
+        if: github.event.client_payload.latest && matrix.platform == env.MAIN_PLATFORM
