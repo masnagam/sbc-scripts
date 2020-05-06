@@ -18,8 +18,8 @@ help() {
 Get docker-compose
 
 USAGE:
-  $PROGNAME -h | --help
-  $PROGNAME [tag]
+  get-docker-compose -h | --help
+  get-docker-compose [tag]
 
 OPTIONS:
   -h, --help
@@ -41,11 +41,11 @@ DESCRIPTION:
 Example
   Install the latest version of docker-compose into /usr/local/bin:
 
-    $PROGNAME | sudo tar -x -C /usr/local/bin
+    get-docker-compose | sudo tar -x -C /usr/local/bin
 
   Extract docker-compose for a remote machine, and copy it via SSH
 
-    $PROGNAME 1.25.4-debian-arm64v8 | ssh \$REMOTE tar -x
+    get-docker-compose 1.25.4-debian-arm64v8 | ssh \$REMOTE tar -x
 EOF
     exit 0
 }
@@ -70,14 +70,11 @@ do
             help
             ;;
         *)
+            TAG="$1"
             break
             ;;
     esac
 done
-
-if [ -n "$1" ]; then
-    TAG="$1"
-fi
 
 IMAGE=masnagam/docker-compose:$TAG
 CONTAINER=
