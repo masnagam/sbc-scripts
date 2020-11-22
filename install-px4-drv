@@ -15,6 +15,7 @@ help() {
 Usage:
   $PROGNAME [--dkms] install
   $PROGNAME [--dkms] uninstall
+  $PROGNAME [--dkms] update
   $PROGNAME -h | --help
 EOF
     exit 0
@@ -83,11 +84,15 @@ do
             ACTION=uninstall
             break
             ;;
+        'update')
+            ACTION=update
+            break
+            ;;
     esac
 done
 
 if [ -z "$ACTION" ]; then
-    error "Specify action (install|uninstall)"
+    error "Specify action (install|uninstall|update)"
 fi
 
 if [ "$DKMS" = yes ]; then
@@ -121,6 +126,19 @@ case "$ACTION" in
             uninstall_driver
         fi
         uninstall_firmware
+        ;;
+    'update')
+        if [ "$DKMS" = yes ]; then
+            uninstall_dkms_driver
+            uninstall_firmware
+            install_firmware
+            install_dkms_driver
+        else
+            uninstall_driver
+            uninstall_firmware
+            install_firmware
+            install_driver
+        fi
         ;;
 esac
 
