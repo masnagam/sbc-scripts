@@ -6,17 +6,41 @@ PROGNAME=$(basename $0)
 BASEDIR=$(cd $(dirname $0); pwd)
 
 DKMS=no
+VERSION=master
 LINUX_HEADERS=
 ACTION=
 DEPS="gcc make unzip"
 
 help() {
     cat <<EOF >&2
+Install/Uninstall nns779/px4_drv
+
 Usage:
-  $PROGNAME [--dkms] install
-  $PROGNAME [--dkms] uninstall
-  $PROGNAME [--dkms] update
   $PROGNAME -h | --help
+  $PROGNAME [--dkms] [--tag <version>] install
+  $PROGNAME [--dkms] [--tag <version>] uninstall
+  $PROGNAME [--dkms] [--tag <version>] update
+
+Options:
+  -h, --help
+    Show help.
+
+  --dkms
+    Use DKMS.
+
+  --tag <version> [default: $VERSION]
+    Version to install.
+
+Actions:
+  install
+    Install the driver.
+
+  uninstall
+    Uninstall the driver.
+
+  update
+    Update the driver.  Make sure the driver has already been installed before
+    updating.
 EOF
     exit 0
 }
@@ -76,6 +100,10 @@ do
             DKMS=yes
             shift
             ;;
+        '--tag')
+            VERSION="$2"
+            shift 2
+            ;;
         'install')
             ACTION=install
             break
@@ -106,8 +134,8 @@ sudo apt-get install -y -qq --no-install-recommends $DEPS
 mkdir /tmp/px4_drv
 trap "rm -rf /tmp/px4_drv" EXIT
 
-echo "Downloading src..."
-wget https://github.com/nns779/px4_drv/tarball/master -O - | \
+echo "Downloading $VERSION..."
+wget https://github.com/nns779/px4_drv/tarball/$VERSION -O - | \
     tar -zx -C /tmp/px4_drv --strip-components=1
 
 case "$ACTION" in
