@@ -29,16 +29,18 @@ Docker Hub:
 
 * https://hub.docker.com/r/masnagam/docker-compose
 
-Supported platforms:
+Supported distros:
 
 * alpine
-* debian (main platform)
+* debian (main distro)
 
-Supported architectures:
+Supported platforms:
 
-* amd64
-* arm32v7
-* arm32v8
+* linux/386
+* linux/amd64
+* linux/arm/v6 (only for alpine)
+* linux/arm/v7
+* linux/arm64/v8
 
 ### Invoke the build job
 
