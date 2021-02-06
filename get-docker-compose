@@ -5,7 +5,10 @@ set -eu
 PROGNAME=$(basename $0)
 BASEDIR=$(cd $(dirname $0); pwd)
 
+IMAGE=masnagam/docker-compose
+PLATFORM=
 TAG=latest
+CONTAINER=
 
 if [ "$(uname)" != Linux ] || id -nG | grep -q docker; then
     DOCKER='docker'
@@ -17,19 +20,22 @@ help() {
     cat <<EOF >&2
 Get docker-compose
 
-USAGE:
+Usage:
   get-docker-compose -h | --help
-  get-docker-compose [tag]
+  get-docker-compose [--platform <platform>] [tag]
 
-OPTIONS:
+Options:
   -h, --help
     Show help
 
-ARGUMENTS:
-  tag (default: $TAG)
+  --platform <platform>
+    Platform like linux/amd64.
+
+Arguments:
+  tag [default: $TAG]
     One of tags listed in https://hub.docker.com/r/masnagam/docker-compose/tags.
 
-DESCRIPTION:
+Description:
   This script extracts docker-compose a Docker image downloaded from
   masnagam/docker-compose:\$tag and outputs it to STDOUT.
 
@@ -38,14 +44,14 @@ DESCRIPTION:
 
   The downloaded Docker image will be removed automatically.
 
-Example
+Examples:
   Install the latest version of docker-compose into /usr/local/bin:
 
     get-docker-compose | sudo tar -x -C /usr/local/bin
 
-  Extract docker-compose for a remote machine, and copy it via SSH
+  Extract docker-compose for a remote aarch64 machine, and copy it via SSH
 
-    get-docker-compose 1.25.4-debian-arm64v8 | ssh \$REMOTE tar -x
+    get-docker-compose --platform=linux/arm64/v8 | ssh \$REMOTE tar -x
 EOF
     exit 0
 }
@@ -60,7 +66,7 @@ clean() {
     if [ -n "$CONTAINER" ]; then
         $DOCKER container rm -f "$CONTAINER"
     fi
-    $DOCKER image rm -f $IMAGE
+    $DOCKER image rm -f $IMAGE:$TAG
 }
 
 while [ $# -gt 0 ]
@@ -69,6 +75,10 @@ do
         '-h' | '--help')
             help
             ;;
+        '--platform')
+            PLATFORM="$2"
+            shift 2
+            ;;
         *)
             TAG="$1"
             break
@@ -76,10 +86,12 @@ do
     esac
 done
 
-IMAGE=masnagam/docker-compose:$TAG
-CONTAINER=
+trap "clean" EXIT INT TERM
 
-trap "clean" EXIT
+CREATE_OPTS=
+if [ -n "$PLATFORM" ]; then
+    CREATE_OPTS="--platform $PLATFORM"
+fi
 
-CONTAINER=$($DOCKER create $IMAGE)
+CONTAINER=$($DOCKER create $CREATE_OPTS $IMAGE)
 $DOCKER cp $CONTAINER:/usr/local/bin/docker-compose -
