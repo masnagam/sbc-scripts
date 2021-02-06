@@ -152,7 +152,7 @@ sudo iscsiadm -m node -p $ISCSI_PORTAL -T $ISCSI_TARGET -l || \
     error "Failed to connect to $ISCSI_TARGET"
 
 sleep 1
-DEV=$(ls -1 /dev/disk/by-path/* 2>/dev/null | grep "ip-$ISCSI_PORTAL" | xargs readlink -f)
+DEV=$(ls /dev/disk/by-path/ip-$ISCSI_PORTAL*$ISCSI_TARGET-lun-0 2>/dev/null)
 test -n "$DEV" || error "Failed to attach iSCSI storage"
 
 echo "Updating initramfs..."
@@ -160,12 +160,21 @@ sudo touch /etc/iscsi/iscsi.initramfs
 sudo rm -f /boot/initrd.img-*
 sudo update-initramfs -v -k $KERNEL_VERION -c
 
-echo "Formatting $DEV to ext4..."
-sudo mkfs.ext4 -F $DEV
-UUID=$(sudo blkid $DEV | cut -d ' ' -f2)
+echo "Creating a GPT partition on $DEV..."
+sudo parted -s $DEV mklabel gpt  # will remove all partitions on the disk
+sudo parted -s $DEV mkpart root 0% 100%
+
+# Wait 1 second for the partition to be accessible
+sleep 1
+
+PART=$DEV-part1
+
+echo "Formatting $PART with ext4..."
+sudo mkfs.ext4 -F $PART
+UUID=$(sudo blkid -o value -s UUID $PART)
 
 echo "Copying files..."
-sudo mount $DEV /mnt
+sudo mount $PART /mnt
 sudo cp -afv /bin /etc /home /lib /opt /root /sbin /srv /usr /var /mnt/
 sudo mkdir -p /mnt/dev /mnt/media /mnt/mnt /mnt/proc /mnt/run /mnt/sys /mnt/tmp
 if [ "$COPY_BOOT" = y ]; then
@@ -173,7 +182,7 @@ if [ "$COPY_BOOT" = y ]; then
 else
     sudo mkdir -p /mnt/boot
 fi
-sudo umount $DEV
+sudo umount $PART
 
 sudo iscsiadm -m node -u
 
@@ -186,19 +195,26 @@ fi
 cat <<EOF
 Done.
 
-Update /etc/fstab in the iSCSI LUN by hand:
+You need to update /etc/fstab in the iSCSI LUN by hand:
 
   sudo iscsiadm -m node -p $ISCSI_PORTAL -T $ISCSI_TARGET -l
-  sudo mount \$(ls -1 /dev/disk/by-path/* 2>/dev/null | grep "ip-$ISCSI_PORTAL" | xargs readlink -f) /mnt
+  sudo mount /dev/disk/by-uuid/$UUID /mnt
 
   # Update the device field for the root partition with
-  # $UUID
+  # UUID=$UUID
   sudo nano /mnt/etc/fstab
 
   sudo umount /mnt
   sudo iscsiadm -m node -u
 
-Copy files in /boot for PXE boot:
+You also need to add the following kernel parameters in order to mount the iSCSI
+LUN at boot time:
+
+  ISCSI_TARGET_IP=$ISCSI_PORTAL
+  ISCSI_TARGET_NAME=$ISCSI_TARGET
+  ISCSI_INITIATOR=$ISCSI_INITIATOR
+  
+Copy files in /boot to an appropriate location if you like to use PXE boot:
 
   sudo mount.cifs //nas/pxeboot/$PXEBOOT_SHARED_FOLDER /mnt
   sudo cp -afv /boot/* /mnt/
