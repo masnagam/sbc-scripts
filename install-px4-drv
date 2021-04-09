@@ -6,7 +6,7 @@ PROGNAME=$(basename $0)
 BASEDIR=$(cd $(dirname $0); pwd)
 
 DKMS=no
-VERSION=master
+VERSION=v0.2.1a
 LINUX_HEADERS=
 ACTION=
 DEPS="gcc make unzip"
