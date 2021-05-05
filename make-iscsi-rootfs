@@ -67,8 +67,7 @@ Bugs:
 
   Workaround:
 
-    \$ cat /lib/modules-load.d/open-iscsi.conf | sed s/^ib_iser/#ib_iser/ \\
-        | sudo tee /lib/modules-load.d/open-iscsi.conf
+    \$ sudo sed -i s/^ib_iser/#ib_iser/ /lib/modules-load.d/open-iscsi.conf
 EOF
     exit 0
 }
@@ -141,8 +140,7 @@ sudo apt-get update -qq
 sudo apt-get install -y -qq --no-install-recommends open-iscsi initramfs-tools
 # Disable to load ib_iser.
 # https://bugs.launchpad.net/ubuntu/+source/open-iscsi/+bug/1566468/comments/14
-cat /lib/modules-load.d/open-iscsi.conf | sed s/^ib_iser/#ib_iser/ | \
-    sudo tee /lib/modules-load.d/open-iscsi.conf >/dev/null
+sudo sed -i s/^ib_iser/#ib_iser/ /lib/modules-load.d/open-iscsi.conf
 sudo systemctl restart open-iscsi || error "Failed to start open-iscsi service"
 
 sleep 1
@@ -175,7 +173,8 @@ UUID=$(sudo blkid -o value -s UUID $PART)
 
 echo "Copying files..."
 sudo mount $PART /mnt
-sudo cp -afv /bin /etc /home /lib /opt /root /sbin /srv /usr /var /mnt/
+DIRS=$(/bin/ls -I dev -I lost+found -I media -I mnt -I proc -I run -I sys -I tmp /)
+sudo cp -afv $DIRS /mnt/
 sudo mkdir -p /mnt/dev /mnt/media /mnt/mnt /mnt/proc /mnt/run /mnt/sys /mnt/tmp
 if [ "$COPY_BOOT" = y ]; then
     sudo cp -afv /boot /mnt/
