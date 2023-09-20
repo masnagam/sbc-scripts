@@ -5,15 +5,18 @@ set -eu
 PROGNAME=$(basename $0)
 BASEDIR=$(cd $(dirname $0); pwd)
 
+# Original: https://github.com/nns779/px4_drv
+GITHUB_URL=https://github.com/tsukumijima/px4_drv
+
 DKMS=no
-VERSION=v0.2.1a
+VERSION=0.4.0
 LINUX_HEADERS=
 ACTION=
 DEPS="gcc make unzip"
 
 help() {
     cat <<EOF >&2
-Install/Uninstall nns779/px4_drv
+Install/Uninstall px4_drv
 
 Usage:
   $PROGNAME -h | --help
@@ -69,15 +72,15 @@ uninstall_firmware() {
 install_dkms_driver() {
     echo "Installing driver with dkms..."
     (cd /tmp/px4_drv \
-     && sudo cp -a ./ /usr/src/px4_drv-0.2.1 \
-     && sudo dkms add px4_drv/0.2.1 \
-     && sudo dkms install px4_drv/0.2.1)
+     && sudo cp -a ./ /usr/src/px4_drv-$VERSION \
+     && sudo dkms add -m px4_drv -v $VERSION \
+     && sudo dkms install -m px4_drv -v $VERSION)
 }
 
 uninstall_dkms_driver() {
     echo "Uninstalling driver with dkms..."
-    sudo dkms remove px4_drv/0.2.1 --all
-    sudo rm -rf /usr/src/px4_drv-0.2.1
+    sudo dkms remove -m px4_drv -v $VERSION --all
+    sudo rm -rf /usr/src/px4_drv-$VERSION
 }
 
 install_driver() {
@@ -135,7 +138,7 @@ mkdir /tmp/px4_drv
 trap "rm -rf /tmp/px4_drv" EXIT
 
 echo "Downloading $VERSION..."
-wget https://github.com/nns779/px4_drv/tarball/$VERSION -O - | \
+wget $GITHUB_URL/tarball/v$VERSION -O - | \
     tar -zx -C /tmp/px4_drv --strip-components=1
 
 case "$ACTION" in
