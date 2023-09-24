@@ -66,7 +66,7 @@ install_firmware() {
 
 uninstall_firmware() {
     echo "Uninstalling firmware..."
-    sudo rm /lib/firmware/it930x-firmware.bin
+    sudo rm -f /lib/firmware/it930x-firmware.bin
 }
 
 install_dkms_driver() {
