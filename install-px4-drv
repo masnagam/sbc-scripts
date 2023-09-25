@@ -6,7 +6,8 @@ PROGNAME=$(basename $0)
 BASEDIR=$(cd $(dirname $0); pwd)
 
 # Original: https://github.com/nns779/px4_drv
-GITHUB_URL=https://github.com/tsukumijima/px4_drv
+#GITHUB_URL=https://github.com/tsukumijima/px4_drv
+GITHUB_URL=https://github.com/masnagam/px4_drv
 
 DKMS=no
 VERSION=0.4.0
@@ -138,7 +139,9 @@ mkdir /tmp/px4_drv
 trap "rm -rf /tmp/px4_drv" EXIT
 
 echo "Downloading $VERSION..."
-wget $GITHUB_URL/tarball/v$VERSION -O - | \
+#wget $GITHUB_URL/tarball/v$VERSION -O - | \
+#    tar -zx -C /tmp/px4_drv --strip-components=1
+wget $GITHUB_URL/tarball/feat-ctrl_timeout -O - | \
     tar -zx -C /tmp/px4_drv --strip-components=1
 
 case "$ACTION" in
