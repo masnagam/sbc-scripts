@@ -21,7 +21,7 @@ Install/Uninstall px4_drv
 Usage:
   $PROGNAME -h | --help
   $PROGNAME [--dkms] [--tag <version>] install
-  $PROGNAME [--dkms] [--tag <version>] uninstall
+  $PROGNAME [--dkms] uninstall
   $PROGNAME [--dkms] [--tag <version>] update
 
 Options:
@@ -65,12 +65,12 @@ install_firmware() {
 }
 
 uninstall_firmware() {
-    echo "Uninstalling firmware..."
+    echo "Removing firmware..."
     sudo rm -f /lib/firmware/it930x-firmware.bin
 }
 
 install_dkms_driver() {
-    echo "Installing driver with dkms..."
+    echo "Installing px4_drv/$VERSION using dkms..."
     (cd /tmp/px4_drv \
      && sudo cp -a ./ /usr/src/px4_drv-$VERSION \
      && sudo dkms add -m px4_drv -v $VERSION \
@@ -78,19 +78,33 @@ install_dkms_driver() {
 }
 
 uninstall_dkms_driver() {
-    echo "Uninstalling driver with dkms..."
-    sudo dkms remove -m px4_drv -v $VERSION --all
-    sudo rm -rf /usr/src/px4_drv-$VERSION
+    # Uninstall only the first px4_drv.
+    # Run multiple times if you install multiple versions of px4_drv.
+    V=$(sudo dkms status | grep px4_drv | head -1 | cut -d ',' -f 1 | cut -d '/' -f 2)
+    if [ -n $V ]
+    then
+        echo "Removing px4_drv/$V installed using dkms..."
+        sudo dkms remove -m px4_drv -v $V --all
+        sudo rm -rf /usr/src/px4_drv-$V
+    else
+        echo "No px4_drv installed"
+    fi
 }
 
 install_driver() {
-    echo "Installing driver..."
+    echo "Installing px4_drv/$VERSION..."
     (cd /tmp/px4_drv/driver && make && sudo make install)
 }
 
 uninstall_driver() {
-    echo "Uninstalling driver..."
-    (cd /tmp/px4_drv/driver && sudo make uninstall)
+    V=$(sudo modinfo px4_drv | grep -E '^version' | cut -d ':' -f 2 | tr -d ' ')
+    if [ -n $V ]
+    then
+        echo "Removing px4_drv/$V..."
+        (cd /tmp/px4_drv/driver && sudo make uninstall)
+    else
+        echo "No px4_drv installed"
+    fi
 }
 
 while [ $# -gt 0 ]
