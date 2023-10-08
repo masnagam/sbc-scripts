@@ -155,6 +155,9 @@ echo "Downloading $VERSION..."
 wget $GITHUB_URL/tarball/v$VERSION -O - | \
     tar -zx -C /tmp/px4_drv --strip-components=1
 
+echo "Enable workqueue"
+sed -i 's/make KVER=${kernelver} /make KVER=${kernelver} ITEDTV_BUS_USE_WORKQUEUE=1 /' /tmp/px4_drv/dkms.conf
+
 case "$ACTION" in
     'install')
         install_firmware
