@@ -15,7 +15,7 @@ ACTION=
 DEPS="gcc make unzip"
 
 help() {
-    cat <<EOF >&2
+  cat <<EOF >&2
 Install/Uninstall px4_drv
 
 Usage:
@@ -45,103 +45,105 @@ Actions:
     Update the driver.  Make sure the driver has already been installed before
     updating.
 EOF
-    exit 0
+  exit 0
 }
 
 error() {
-    echo "$1" >&2
-    exit 1
+  echo "$1" >&2
+  exit 1
 }
 
 install_firmware() {
-    echo "Installing firmware..."
-    (cd /tmp/px4_drv/fwtool \
-     && make -j $(nproc) \
-     && wget http://plex-net.co.jp/plex/pxw3u4/pxw3u4_BDA_ver1x64.zip -O pxw3u4_BDA_ver1x64.zip \
-     && unzip -oj pxw3u4_BDA_ver1x64.zip pxw3u4_BDA_ver1x64/PXW3U4.sys \
-     && ./fwtool PXW3U4.sys it930x-firmware.bin \
-     && sudo mkdir -p /lib/firmware \
-     && sudo cp it930x-firmware.bin /lib/firmware/)
+  echo "Installing firmware..."
+  (cd /tmp/px4_drv/fwtool \
+   && make -j $(nproc) \
+   && wget http://plex-net.co.jp/plex/pxw3u4/pxw3u4_BDA_ver1x64.zip -O pxw3u4_BDA_ver1x64.zip \
+   && unzip -oj pxw3u4_BDA_ver1x64.zip pxw3u4_BDA_ver1x64/PXW3U4.sys \
+   && ./fwtool PXW3U4.sys it930x-firmware.bin \
+   && sudo mkdir -p /lib/firmware \
+   && sudo cp it930x-firmware.bin /lib/firmware/)
 }
 
 uninstall_firmware() {
-    echo "Removing firmware..."
-    sudo rm -f /lib/firmware/it930x-firmware.bin
+  echo "Removing firmware..."
+  sudo rm -f /lib/firmware/it930x-firmware.bin
 }
 
 install_dkms_driver() {
-    echo "Installing px4_drv/$VERSION using dkms..."
-    (cd /tmp/px4_drv \
-     && sudo cp -a ./ /usr/src/px4_drv-$VERSION \
-     && sudo dkms add -m px4_drv -v $VERSION \
-     && sudo dkms install -m px4_drv -v $VERSION)
+  echo "Installing px4_drv/$VERSION using dkms..."
+  (cd /tmp/px4_drv \
+   && sudo cp -a ./ /usr/src/px4_drv-$VERSION \
+   && sudo dkms add -m px4_drv -v $VERSION \
+   && sudo dkms install -m px4_drv -v $VERSION)
 }
 
 uninstall_dkms_driver() {
-    # Uninstall only the first px4_drv.
-    # Run multiple times if you install multiple versions of px4_drv.
-    V=$(sudo dkms status | grep px4_drv | head -1 | cut -d ',' -f 1 | cut -d '/' -f 2)
-    if [ -n $V ]
-    then
-        echo "Removing px4_drv/$V installed using dkms..."
-        sudo dkms remove -m px4_drv -v $V --all
-        sudo rm -rf /usr/src/px4_drv-$V
-    else
-        echo "No px4_drv installed"
-    fi
+  # Uninstall only the first px4_drv.
+  # Run multiple times if you install multiple versions of px4_drv.
+  V=$(sudo dkms status | grep px4_drv | head -1 | cut -d ',' -f 1 | cut -d '/' -f 2)
+  if [ -n $V ]
+  then
+    echo "Removing px4_drv/$V installed using dkms..."
+    sudo dkms remove -m px4_drv -v $V --all
+    sudo rm -rf /usr/src/px4_drv-$V
+  else
+    echo "No px4_drv installed"
+  fi
 }
 
 install_driver() {
-    echo "Installing px4_drv/$VERSION..."
-    (cd /tmp/px4_drv/driver && make && sudo make install)
+  echo "Installing px4_drv/$VERSION..."
+  (cd /tmp/px4_drv/driver && make && sudo make install)
 }
 
 uninstall_driver() {
-    V=$(sudo modinfo px4_drv | grep -E '^version' | cut -d ':' -f 2 | tr -d ' ')
-    if [ -n $V ]
-    then
-        echo "Removing px4_drv/$V..."
-        (cd /tmp/px4_drv/driver && sudo make uninstall)
-    else
-        echo "No px4_drv installed"
-    fi
+  V=$(sudo modinfo px4_drv | grep -E '^version' | cut -d ':' -f 2 | tr -d ' ')
+  if [ -n $V ]
+  then
+    echo "Removing px4_drv/$V..."
+    (cd /tmp/px4_drv/driver && sudo make uninstall)
+  else
+    echo "No px4_drv installed"
+  fi
 }
 
 while [ $# -gt 0 ]
 do
-    case "$1" in
-        '-h' | '--help')
-            help
-            ;;
-        '--dkms')
-            DKMS=yes
-            shift
-            ;;
-        '--tag')
-            VERSION="$2"
-            shift 2
-            ;;
-        'install')
-            ACTION=install
-            break
-            ;;
-        'uninstall')
-            ACTION=uninstall
-            break
-            ;;
-        'update')
-            ACTION=update
-            break
-            ;;
-    esac
+  case "$1" in
+    '-h' | '--help')
+      help
+      ;;
+    '--dkms')
+      DKMS=yes
+      shift
+      ;;
+    '--tag')
+      VERSION="$2"
+      shift 2
+      ;;
+    'install')
+      ACTION=install
+      break
+      ;;
+    'uninstall')
+      ACTION=uninstall
+      break
+      ;;
+    'update')
+      ACTION=update
+      break
+      ;;
+  esac
 done
 
-if [ -z "$ACTION" ]; then
-    error "Specify action (install|uninstall|update)"
+if [ -z "$ACTION" ]
+then
+  error "Specify action (install|uninstall|update)"
 fi
 
-if [ "$DKMS" = yes ]; then
-    DEPS="$DEPS dkms"
+if [ "$DKMS" = yes ]
+then
+  DEPS="$DEPS dkms"
 fi
 
 echo "Installing deps..."
@@ -152,42 +154,44 @@ mkdir /tmp/px4_drv
 trap "rm -rf /tmp/px4_drv" EXIT
 
 echo "Downloading $VERSION..."
-wget $GITHUB_URL/tarball/v$VERSION -O - | \
-    tar -zx -C /tmp/px4_drv --strip-components=1
+wget $GITHUB_URL/tarball/v$VERSION -O - | tar -zx -C /tmp/px4_drv --strip-components=1
 
 echo "Enable workqueue"
 sed -i 's/make KVER=${kernelver} /make KVER=${kernelver} ITEDTV_BUS_USE_WORKQUEUE=1 /' /tmp/px4_drv/dkms.conf
 
 case "$ACTION" in
-    'install')
-        install_firmware
-        if [ "$DKMS" = yes ]; then
-            install_dkms_driver
-        else
-            install_driver
-        fi
-        ;;
-    'uninstall')
-        if [ "$DKMS" = yes ]; then
-            uninstall_dkms_driver
-        else
-            uninstall_driver
-        fi
-        uninstall_firmware
-        ;;
-    'update')
-        if [ "$DKMS" = yes ]; then
-            uninstall_dkms_driver
-            uninstall_firmware
-            install_firmware
-            install_dkms_driver
-        else
-            uninstall_driver
-            uninstall_firmware
-            install_firmware
-            install_driver
-        fi
-        ;;
+  'install')
+    install_firmware
+    if [ "$DKMS" = yes ]
+    then
+      install_dkms_driver
+    else
+      install_driver
+    fi
+    ;;
+  'uninstall')
+    if [ "$DKMS" = yes ]
+    then
+      uninstall_dkms_driver
+    else
+      uninstall_driver
+    fi
+    uninstall_firmware
+    ;;
+  'update')
+    if [ "$DKMS" = yes ]
+    then
+      uninstall_dkms_driver
+      uninstall_firmware
+      install_firmware
+      install_dkms_driver
+    else
+      uninstall_driver
+      uninstall_firmware
+      install_firmware
+      install_driver
+    fi
+    ;;
 esac
 
 echo "Done"
