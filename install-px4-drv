@@ -12,7 +12,7 @@ DKMS=no
 VERSION=0.4.1
 LINUX_HEADERS=
 ACTION=
-DEPS="gcc make unzip"
+DEPS="ca-certificates curl gcc make unzip"
 
 help() {
   cat <<EOF >&2
@@ -53,11 +53,15 @@ error() {
   exit 1
 }
 
+distro() {
+  cat /etc/os-release | grep -E '^ID=' | cut -d '=' -f 2
+}
+
 install_firmware() {
   echo "Installing firmware..."
   (cd /tmp/px4_drv/fwtool \
    && make -j $(nproc) \
-   && wget http://plex-net.co.jp/plex/pxw3u4/pxw3u4_BDA_ver1x64.zip -O pxw3u4_BDA_ver1x64.zip \
+   && curl http://plex-net.co.jp/plex/pxw3u4/pxw3u4_BDA_ver1x64.zip -fSL >pxw3u4_BDA_ver1x64.zip \
    && unzip -oj pxw3u4_BDA_ver1x64.zip pxw3u4_BDA_ver1x64/PXW3U4.sys \
    && ./fwtool PXW3U4.sys it930x-firmware.bin \
    && sudo mkdir -p /lib/firmware \
@@ -147,14 +151,21 @@ then
 fi
 
 echo "Installing deps..."
-sudo apt-get update -qq
-sudo apt-get install -y -qq --no-install-recommends $DEPS
+case "$(distro)" in
+  arch)
+    sudo pacman -S --noconfirm $DEPS
+    ;;
+  debian)
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq --no-install-recommends $DEPS
+    ;;
+esac
 
 mkdir /tmp/px4_drv
 trap "rm -rf /tmp/px4_drv" EXIT
 
 echo "Downloading $VERSION..."
-wget $GITHUB_URL/tarball/v$VERSION -O - | tar -zx -C /tmp/px4_drv --strip-components=1
+curl $GITHUB_URL/tarball/v$VERSION -fSL | tar -zx -C /tmp/px4_drv --strip-components=1
 
 echo "Enable workqueue"
 sed -i 's/make KVER=${kernelver} /make KVER=${kernelver} ITEDTV_BUS_USE_WORKQUEUE=1 /' /tmp/px4_drv/dkms.conf
