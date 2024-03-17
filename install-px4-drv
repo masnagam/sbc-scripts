@@ -9,7 +9,7 @@ BASEDIR=$(cd $(dirname $0); pwd)
 GITHUB_URL=https://github.com/tsukumijima/px4_drv
 
 DKMS=no
-VERSION=0.4.1
+VERSION=0.4.4
 LINUX_HEADERS=
 ACTION=
 DEPS="ca-certificates curl gcc make unzip"
