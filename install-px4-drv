@@ -170,6 +170,13 @@ curl $GITHUB_URL/tarball/v$VERSION -fSL | tar -zx -C /tmp/px4_drv --strip-compon
 echo "Enable workqueue"
 sed -i 's/make KVER=${kernelver} /make KVER=${kernelver} ITEDTV_BUS_USE_WORKQUEUE=1 /' /tmp/px4_drv/dkms.conf
 
+# CLEAN was deprecated.
+# See https://github.com/dell/dkms/commit/cdad565004349b78b7164fc2195fe70674d2b148
+if expr "$(dkms --version)" '>' 'dkms-3.1.7' >/dev/null
+then
+  sed -i '/^CLEAN=.*/d' /tmp/px4_drv/dkms.conf
+fi
+
 case "$ACTION" in
   'install')
     install_firmware
