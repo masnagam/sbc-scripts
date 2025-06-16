@@ -177,6 +177,13 @@ then
   sed -i '/^CLEAN=.*/d' /tmp/px4_drv/dkms.conf
 fi
 
+if expr "$(uname -r)" '>' '6.15.1' >/dev/null
+then
+  echo "Applying px4_drv/linux_6.15.2.patch to driver/driver_module.c..."
+  (cd /tmp/px4_drv; \
+   curl https://raw.githubusercontent.com/masnagam/sbc-scripts/refs/heads/main/px4_drv/linux_6.15.2.patch -fsSL | patch -p0)
+fi
+
 case "$ACTION" in
   'install')
     install_firmware
